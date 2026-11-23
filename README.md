@@ -20,10 +20,6 @@
   <img src="https://skillicons.dev/icons?i=unity,cs,ts,threejs,electron,vite,html,js&theme=dark&perline=8" alt="Unity, C#, TypeScript, Three.js, Electron, Vite, HTML, JavaScript" />
 </p>
 
-<img src="divider-activity.svg" width="100%" alt="Activity" />
-
-<img src="https://github-readme-activity-graph.vercel.app/graph?username=alzh0&bg_color=0b0a08&color=d9c3a0&line=e8b061&point=fff6e8&area=true&area_color=e8b061&hide_border=true&radius=26&custom_title=Contributions" width="100%" alt="Contribution activity graph" />
-
 <br />
 
 <img src="footer.svg" width="100%" alt="Thanks for visiting" />
