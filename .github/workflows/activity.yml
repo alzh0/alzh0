@@ -1,0 +1,118 @@
+name: Activity card
+
+on:
+  schedule:
+    - cron: "23 */6 * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [".github/workflows/activity.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build activity.svg
+        run: |
+          python3 - <<'PY'
+          import re, sys, html, datetime, urllib.request
+
+          USER = "alzh0"
+          src = None
+          if src:
+              page = open(src, encoding="utf-8").read()
+          else:
+              req = urllib.request.Request(f"https://github.com/users/{USER}/contributions", headers={"User-Agent": "activity-card"})
+              page = urllib.request.urlopen(req, timeout=30).read().decode("utf-8")
+
+          attr = lambda tag, name: (re.search(rf'{name}="([^"]*)"', tag) or [None, None])[1]
+          counts = {}
+          for m in re.finditer(r'<tool-tip\b[^>]*>([^<]*)</tool-tip>', page):
+              n = re.match(r'\s*(\d+) contribution', m.group(1))
+              counts[attr(m.group(0), "for")] = int(n.group(1)) if n else 0
+          days = []
+          for m in re.finditer(r'<td\b[^>]*ContributionCalendar-day[^>]*>', page):
+              tag = m.group(0)
+              d = attr(tag, "data-date")
+              if not d:
+                  continue
+              days.append((datetime.date.fromisoformat(d), counts.get(attr(tag, "id"), 0), int(attr(tag, "data-level") or 0)))
+          days.sort()
+          if not days:
+              sys.exit("no contribution data found")
+
+          total = sum(c for _, c, _ in days)
+          active = sum(1 for _, c, _ in days if c)
+          best = cur = 0
+          for _, c, _ in days:
+              cur = cur + 1 if c else 0
+              best = max(best, cur)
+
+          # ---------------------------------------------------------------- draw
+          W, H = 1200, 330
+          GX, GY, CELL, GAP = 96, 112, 16, 4
+          STEP = CELL + GAP
+          start = days[0][0] - datetime.timedelta(days=(days[0][0].weekday() + 1) % 7)  # back to Sunday
+          FILL = ["#ffffff", "#5a4220", "#8f6a2f", "#d39b4a", "#ffe3b0"]
+          OPAC = [".06", "1", "1", "1", "1"]
+          SANS = "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Inter, 'Helvetica Neue', Arial, sans-serif"
+
+          cells, months, last_month = [], [], None
+          for d, c, lvl in days:
+              week = (d - start).days // 7
+              dow = (d.weekday() + 1) % 7
+              x, y = GX + week * STEP, GY + dow * STEP
+              glow = ' filter="url(#gl)"' if lvl == 4 else ""
+              cells.append(f'<rect x="{x}" y="{y}" width="{CELL}" height="{CELL}" rx="4" fill="{FILL[lvl]}" fill-opacity="{OPAC[lvl]}"{glow}/>')
+              if dow == 0 and d.month != last_month and d.day <= 7:
+                  months.append(f'<text x="{x}" y="{GY - 14}" class="l">{d:%b}</text>')
+                  last_month = d.month
+
+          grid_w = ((days[-1][0] - start).days // 7 + 1) * STEP - GAP
+          right = GX + grid_w
+          legend_x = right - 46 - 5 * STEP + GAP
+          legend = "".join(f'<rect x="{legend_x + i * STEP}" y="{H - 52}" width="{CELL}" height="{CELL}" rx="4" fill="{FILL[i]}" fill-opacity="{OPAC[i]}"/>' for i in range(5))
+          today = datetime.date.today()
+          plural = lambda n, w: f"{n:,} {w}{'' if n == 1 else 's'}"
+          headline = f"{plural(total, 'contribution')} · {plural(active, 'active day')} · {best} day best streak"
+
+          svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" role="img" aria-label="{html.escape(headline)} in the last year">
+          <defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#17120d"/><stop offset=".6" stop-color="#100d0a"/><stop offset="1" stop-color="#1d140b"/></linearGradient>
+          <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".06"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+          <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".5"/><stop offset=".4" stop-color="#fff" stop-opacity=".08"/><stop offset="1" stop-color="#ffe2b0" stop-opacity=".45"/></linearGradient>
+          <filter id="gl" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          <clipPath id="f"><rect width="{W}" height="{H}" rx="26"/></clipPath></defs>
+          <style>text{{font-family:{SANS}}}.l{{font-size:15px;fill:#fff6e8;fill-opacity:.6}}</style>
+          <g clip-path="url(#f)"><rect width="{W}" height="{H}" fill="url(#bg)"/><rect width="{W}" height="{H / 2:.0f}" fill="url(#sheen)"/></g>
+          <rect x=".75" y=".75" width="{W - 1.5}" height="{H - 1.5}" rx="25.25" fill="none" stroke="url(#rim)" stroke-width="1.5"/>
+          <text x="{GX}" y="58" font-size="21" font-weight="600" fill="#fff6e8">{html.escape(headline)}</text>
+          <text x="{GX + grid_w}" y="58" text-anchor="end" font-size="13" font-weight="600" letter-spacing="3" fill="#e8b061">LAST 12 MONTHS</text>
+          {"".join(months)}
+          <text x="{GX - 14}" y="{GY + 1 * STEP + 12}" text-anchor="end" class="l">Mon</text>
+          <text x="{GX - 14}" y="{GY + 3 * STEP + 12}" text-anchor="end" class="l">Wed</text>
+          <text x="{GX - 14}" y="{GY + 5 * STEP + 12}" text-anchor="end" class="l">Fri</text>
+          {"".join(cells)}
+          <text x="{GX}" y="{H - 39}" class="l" font-size="14">Updated {today:%B} {today.day}, {today.year}</text>
+          <text x="{legend_x - 10}" y="{H - 39}" text-anchor="end" class="l" font-size="14">Less</text>{legend}
+          <text x="{right}" y="{H - 39}" text-anchor="end" class="l" font-size="14">More</text>
+          </svg>'''
+          open("activity.svg", "w", encoding="utf-8").write(re.sub(r">\s+<", "><", svg))
+          print(headline)
+          PY
+
+      - name: Commit if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add activity.svg
+          if git diff --cached --quiet; then
+            echo "No changes"
+          else
+            git commit -m "Update activity card"
+            git push
+          fi
